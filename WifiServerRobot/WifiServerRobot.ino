@@ -77,12 +77,14 @@ void getBeaconPosition(YunClient client){
     Bridge.get("y", hedgehog_y_buffer, 8);
     hedgehog_x = atoi(hedgehog_x_buffer);
     hedgehog_y = atoi(hedgehog_y_buffer);
-    String s = "X: ";
+    String s = "";
     s.concat(hedgehog_x);
-    s.concat(", Y:");
+    s.concat(",");
     s.concat(hedgehog_y);
     client.println(s);
   }else if(hedgehog_error_buffer[0] == 'E'){
+    client.println(F("NO_HEDGEHOG_CONNECTION_OR_NO_POSITION_UPDATE"));
+  }else if(hedgehog_error_buffer[0] == 'S'){
     client.println(F("NO_HEDGEHOG_CONNECTION_OR_NO_POSITION_UPDATE"));
   }else{
     client.println(F("NO_RESPONSE_FROM_LINUX"));

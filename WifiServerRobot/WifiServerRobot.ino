@@ -1,22 +1,28 @@
 #include <Process.h>
-#include <Bridge.h>
+#include <Bridge.h> 
 #include <YunServer.h>
 #include <YunClient.h>
+#include <Servo.h>
 
-YunServer server; //REST API server
+YunServer server; //REST API server //https://www.arduino.cc/en/Tutorial/Bridge
 int hedgehog_x, hedgehog_y; //aktuální souřadnice připojeného majáku
 char hedgehog_x_buffer[8], hedgehog_y_buffer[8]; //buffery pro získání souřadnic z Linuxu v textové podobě
 char hedgehog_error_buffer[1]; //buffer pro získání error hlášky z Linuxu
+Servo servoRaid; //servo pro zatáčení
+Servo motor; //motor pro pohon vozíku
+int raidValue = 90; //aktuální hodnota raidu
 
 void setup() {
-  delay(2000);
+  servoRaid.attach(9); //servo zatáčení připojeno na digitální port 9
+  motor.attach(11); //motor pro pohon vozíku připojen na digitální port 11
+  delay(500);
   
   pinMode(13, OUTPUT);
   digitalWrite(13, HIGH);
   Bridge.begin();  // make contact with the linux processor
   digitalWrite(13, LOW);
 
-  delay(2000);
+  delay(500);
 
   // start REST API server
   digitalWrite(13, HIGH);
@@ -24,7 +30,7 @@ void setup() {
   server.begin();
   digitalWrite(13, LOW);
   
-  delay(2000);  // wait 2 seconds
+  delay(500);
 }
 
 void loop() {
@@ -46,11 +52,14 @@ void process(YunClient client) {
   if (command == "check") {
     checkCommand(client);
   }
-  if (command == "beacon-adress") {
-    getBeaconAdress(client);
-  }
   if (command == "position") {
     getBeaconPosition(client);
+  }
+  if (command == "raid") {
+    raidStep(client);
+  }
+  if (command == "drive") {
+    driveStep(client);
   }
 }
 
@@ -60,12 +69,6 @@ void process(YunClient client) {
 //checking connection to Arduino
 void checkCommand(YunClient client) {
   client.println(F("NVC8mK73kAoXzLAYxFMo"));
-}
-
-//arduino/beacon-adress
-//Vrátí adresu majáku připojeného k tomuto zařízení
-void getBeaconAdress(YunClient client){
-  client.println(F("BEACON_NOT_CONNECTED"));
 }
 
 //arduino/position
@@ -89,4 +92,48 @@ void getBeaconPosition(YunClient client){
   }else{
     client.println(F("NO_RESPONSE_FROM_LINUX"));
   }
+}
+
+//arduino/raid/value
+//Zatočí přední kola vozíku o danou hodnota
+void raidStep(YunClient client){
+  int value;
+  value = client.parseInt();
+  raidValue = raidValue+value;
+  
+  if(raidValue < 75){
+    raidValue = 75;
+  }else if (raidValue > 105){
+    raidValue = 105;
+  }
+  servoRaid.write(raidValue);
+  delay(15);
+}
+
+//arduino/drive/value
+//Pohne s robotem dopředu nebo dozadu podle dané hodnoty (záporná pihybuje s robotem dozadu)
+//Pohyb není nijak měřen a hodnota určuje pouze čas po který se bude vozík pohybovat (hodnota tedy určuje relativní míru kroku)
+//Robot se bude pohybovat nejmenší možnou rychlostí
+void driveStep(YunClient client){
+    //31 - 90 - dopředu
+    //90 - brzda
+    //100 - 159 - dozadu
+    int value;
+    bool reverse = false;
+    value = client.parseInt(); 
+    
+    if(value < 0){
+      reverse = true;
+      value = -value; 
+    }
+    
+    if(reverse){
+      motor.write(104);
+    }else{
+      motor.write(80);
+    }
+    
+    delay(value);
+    
+    motor.write(90);
 }

@@ -3,6 +3,7 @@
 #include <YunServer.h>
 #include <YunClient.h>
 #include <Servo.h>
+#include <EEPROM.h>
 
 YunServer server; //REST API server //https://www.arduino.cc/en/Tutorial/Bridge
 int hedgehog_x, hedgehog_y; //aktuální souřadnice připojeného majáku
@@ -61,6 +62,12 @@ void process(YunClient client) {
   if (command == "drive") {
     driveStep(client);
   }
+  if (command == "writeEEPROM") {
+    writeEEPROM(client);
+  }
+  if (command == "readEEPROM") {
+    readEEPROM(client);
+  }
 }
 
 //***REST API***//
@@ -94,7 +101,7 @@ void getBeaconPosition(YunClient client){
   }
 }
 
-//arduino/raid/value
+//arduino/raid/[value]
 //Zatočí přední kola vozíku o danou hodnota
 void raidStep(YunClient client){
   int value;
@@ -110,7 +117,7 @@ void raidStep(YunClient client){
   delay(15);
 }
 
-//arduino/drive/value
+//arduino/drive/[value]
 //Pohne s robotem dopředu nebo dozadu podle dané hodnoty (záporná pihybuje s robotem dozadu)
 //Pohyb není nijak měřen a hodnota určuje pouze čas po který se bude vozík pohybovat (hodnota tedy určuje relativní míru kroku)
 //Robot se bude pohybovat nejmenší možnou rychlostí
@@ -136,4 +143,75 @@ void driveStep(YunClient client){
     delay(value);
     
     motor.write(90);
+}
+
+//arduino/writeEEPROM/[variable]/[values]...
+//Zapíše do perzistentní paměti proměnnou
+//arduino/writeEEPROM/name/[name] - název zařízení
+//arduino/writeEEPROM/alias/[alias] - zkratka zařízení
+//arduino/writeEEPROM/distances/[distanceFromHedghogToBackOfCart]/[distanceFromHedghogToFrontOfCart]/[distanceFromHedghogToLeftSideOfCart]/[distanceFromHedghogToRightSideOfCart] - vzdálenosti od majáku
+void writeEEPROM(YunClient client){
+  String var = client.readStringUntil('/');
+  if(var == "name"){
+    //char deviceName[50]; 
+    String deviceName = client.readStringUntil('\r');
+    for (int i=0; i <= 49; i++){
+        EEPROM.write(i, deviceName[i]);
+    }
+  }else if(var == "alias"){
+    //char deviceAlias[20]; 
+    String deviceAlias = client.readStringUntil('\r');
+    for (int i=50; i <= 69; i++){
+        EEPROM.write(i, deviceAlias[i-50]);
+    }
+  }else if(var == "distances"){
+    EEPROM.write(70, client.parseInt());
+    EEPROM.write(71, client.parseInt());
+    EEPROM.write(72, client.parseInt());
+    EEPROM.write(73, client.parseInt());
+  }
+}
+
+//arduino/readEEPROM
+//Přečte z perzistentní paměti proměnnou
+//Pokud proměnná neexistuje, vrací NOT SET
+//arduino/writeEEPROM/name - název zařízení
+//arduino/writeEEPROM/alias - zkratka zařízení
+//arduino/writeEEPROM/distances - vzdálenosti od majáku (distanceFromHedghogToBackOfCart,distanceFromHedghogToFrontOfCart,distanceFromHedghogToLeftSideOfCart,distanceFromHedghogToRightSideOfCart)
+void readEEPROM(YunClient client){
+  String var = client.readStringUntil('\r');
+  if(var == "name"){
+    if(EEPROM.read(0) == 255){
+      client.println("NOT SET");
+      return;
+    }
+    char deviceName[50];
+    for (int i=0; i <= 49; i++){
+        deviceName[i] = EEPROM.read(i);
+    }
+    client.println(deviceName);
+  }else if(var == "alias"){
+    if(EEPROM.read(50) == 255){
+      client.println("NOT SET");
+      return;
+    }
+    char deviceAlias[20];
+    for (int i=50; i <= 69; i++){
+        deviceAlias[i-50] = EEPROM.read(i);
+    }
+    client.println(deviceAlias);
+  }else if(var == "distances"){
+    if(EEPROM.read(70) == 255){
+      client.println("NOT SET");
+      return;
+    }
+    int distanceFromHedghogToBackOfCart = EEPROM.read(70);
+    int distanceFromHedghogToFrontOfCart = EEPROM.read(71);
+    int distanceFromHedghogToLeftSideOfCart = EEPROM.read(72);
+    int distanceFromHedghogToRightSideOfCart = EEPROM.read(73);
+    
+    String result = String(distanceFromHedghogToBackOfCart)+","+String(distanceFromHedghogToFrontOfCart)+","+String(distanceFromHedghogToLeftSideOfCart)+","+String(distanceFromHedghogToRightSideOfCart);
+    
+    client.println(result);
+  }
 }

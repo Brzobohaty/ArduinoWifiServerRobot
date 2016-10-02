@@ -58,13 +58,12 @@ from threading import Thread
 
 
 class MarvelmindHedge(Thread):
-    def __init__(self, tty="/dev/ttyACM0", baud=9600, maxvaluescount=3, recieveDataCallback=None):
+    def __init__(self, tty="/dev/ttyACM0", baud=9600, maxvaluescount=3):
         self.tty = tty  # serial
         self.baud = baud  # baudrate
         self._bufferSerialDeque = collections.deque(maxlen=255)  # serial buffer
         self.lastValues = collections.deque(maxlen=maxvaluescount)  # meas. buffer
         self.error = "NO_ERROR"
-        self.recieveDataCallback = recieveDataCallback
 
         for x in range(0, 10):
             self.lastValues.append([0, 0, 0, 0])  # last measured positions and timestamps; [x, y, z, timestamp]
@@ -73,10 +72,6 @@ class MarvelmindHedge(Thread):
         self.serialPort = None
 
         Thread.__init__(self)
-
-    def print_position(self):
-        print "X: {:d}, Y: {:d}, Z: {:d} at time T: {:.2f}".format(self.position()[0], self.position()[1],
-                                                                   self.position()[2], self.position()[3] / 64.0)
 
     def position(self):
         return list(self.lastValues)[-1]
@@ -110,24 +105,11 @@ class MarvelmindHedge(Thread):
                         if (len(bufferList) > pktHdrOffset + 4 + msgLen + 2):
                             usnTimestamp, usnX, usnY, usnZ, usnCRC16 = struct.unpack_from('<LhhhxxxxxxH', strbuf,
                                                                                           pktHdrOffset + 5)
-                            crc16 = crcmod.predefined.Crc('modbus')
-                            crc16.update(strbuf[pktHdrOffset: pktHdrOffset + msgLen + 5])
-                            CRC_calc = int(crc16.hexdigest(), 16)
+                            #print(usnX, usnY)
+                            value = [usnX, usnY, usnZ, usnTimestamp]
+                            self.lastValues.append(value)
+                            self.error = "NO_ERROR"
 
-                            if CRC_calc == usnCRC16:
-                                value = [usnX, usnY, usnZ, usnTimestamp]
-                                self.lastValues.append(value)
-                                self.error = "NO_ERROR"
-                                if (self.recieveDataCallback is not None):
-                                    self.recieveDataCallback()
-                            else:
-                                self.error = "CRC ERROR"
-
-                            if pktHdrOffset == -1:
-                                self.error = "ERROR: Marvelmind USNAV beacon packet header not found (check modem board or radio link)"
-                                continue
-                                # elif pktHdrOffset >= 0:
-                                # self.error = "Found USNAV beacon packet header at offset %d" % pktHdrOffset
                             for x in range(0, pktHdrOffset + msgLen + 7):
                                 self._bufferSerialDeque.popleft()
 

@@ -12,6 +12,10 @@ char hedgehog_error_buffer[1]; //buffer pro získání error hlášky z Linuxu
 Servo servoRaid; //servo pro zatáčení
 Servo motor; //motor pro pohon vozíku
 int raidValue = 90; //aktuální hodnota raidu
+const int buttonPin = 10; //pin na který je připojeno tlačítko
+int buttonState = 0; //aktuální stav tlačítka
+int lastButtonState = 0; //předchozí stav tlačítka
+int lastXPosition = 0, lastYPosition = 0; //poslední naměřené souřadnice při stisknutí tlačítka
 
 void setup() {
   servoRaid.attach(9); //servo zatáčení připojeno na digitální port 9
@@ -31,10 +35,15 @@ void setup() {
   server.begin();
   digitalWrite(13, LOW);
   
+  pinMode(buttonPin, INPUT);
+  
   delay(500);
 }
 
 void loop() {
+  readPosition();
+  readButtonState();
+  
   //waiting for REST API request
   YunClient client = server.accept();
     
@@ -42,8 +51,30 @@ void loop() {
     process(client);
     client.stop();
   }
-  
-  delay(50); 
+}
+
+//čte polohu ze streamu posílaného z Linuxu (tady ve výsledku z majáku)
+void readPosition(){
+  Bridge.get("error", hedgehog_error_buffer, 1);
+  if(hedgehog_error_buffer[0] == 'N'){
+    Bridge.get("x", hedgehog_x_buffer, 8);
+    Bridge.get("y", hedgehog_y_buffer, 8); 
+    hedgehog_x = atoi(hedgehog_x_buffer);
+    hedgehog_y = atoi(hedgehog_y_buffer);
+  }else{
+    hedgehog_x = 0;
+    hedgehog_y = 0;  
+  }
+}
+
+//při stisku tlačítka zaznamená pozici
+void readButtonState(){
+  buttonState = digitalRead(buttonPin);
+  if (buttonState != lastButtonState && buttonState == LOW) {
+      lastXPosition = hedgehog_x;
+      lastYPosition = hedgehog_y;
+  }
+  lastButtonState = buttonState;
 }
 
 //REST API definition
@@ -67,6 +98,9 @@ void process(YunClient client) {
   }
   if (command == "readEEPROM") {
     readEEPROM(client);
+  }
+  if (command == "read-map-point") {
+    readMapPoint(client);
   }
 }
 
@@ -213,5 +247,21 @@ void readEEPROM(YunClient client){
     String result = String(distanceFromHedghogToBackOfCart)+","+String(distanceFromHedghogToFrontOfCart)+","+String(distanceFromHedghogToLeftSideOfCart)+","+String(distanceFromHedghogToRightSideOfCart);
     
     client.println(result);
+  }
+}
+
+//arduino/read-map-point
+//Přečte naposledy zaznamenanou pozici při stisku tlačítka ("NOT SET", pokud nebyla žádná pozice zatím zaznamenána)
+void readMapPoint(YunClient client) {
+  if(lastXPosition != 0 && lastYPosition != 0){
+    String s = "";
+    s.concat(lastXPosition);
+    s.concat(",");
+    s.concat(lastYPosition);
+    client.println(s);
+    lastXPosition = 0;
+    lastYPosition = 0;
+  }else{
+    client.println(F("NO_SET"));
   }
 }

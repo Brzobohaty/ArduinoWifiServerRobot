@@ -15,7 +15,9 @@ int raidValue = 90; //aktuální hodnota raidu
 const int buttonPin = 10; //pin na který je připojeno tlačítko
 int buttonState = 0; //aktuální stav tlačítka
 int lastButtonState = 0; //předchozí stav tlačítka
-int lastXPosition = 0, lastYPosition = 0; //poslední naměřené souřadnice při stisknutí tlačítka
+const int sizeOfLastPositionMemory = 40; //velikost paměti pro ukládání pozicí při zmáčknutí tlačítka
+int lastXPositionBuffer[sizeOfLastPositionMemory], lastYPositionBuffer[sizeOfLastPositionMemory]; //posledních 60 naměřen7ch souřadnic při stisknutí tlačítka
+int indexOfLastPosition = -1; //index naposledy naměřené pozice v bufferu
 
 void setup() {
   servoRaid.attach(9); //servo zatáčení připojeno na digitální port 9
@@ -70,9 +72,17 @@ void readPosition(){
 //při stisku tlačítka zaznamená pozici
 void readButtonState(){
   buttonState = digitalRead(buttonPin);
-  if (buttonState != lastButtonState && buttonState == LOW) {
-      lastXPosition = hedgehog_x;
-      lastYPosition = hedgehog_y;
+  if (buttonState != lastButtonState) {
+    if (buttonState == LOW && indexOfLastPosition < sizeOfLastPositionMemory) {
+      indexOfLastPosition++;
+      lastXPositionBuffer[indexOfLastPosition] = hedgehog_x;
+      lastYPositionBuffer[indexOfLastPosition] = hedgehog_y;
+      if(digitalRead(13) == HIGH){
+        digitalWrite(13, LOW);
+      }else{
+        digitalWrite(13, HIGH);
+      }
+    }
   }
   lastButtonState = buttonState;
 }
@@ -99,8 +109,8 @@ void process(YunClient client) {
   if (command == "readEEPROM") {
     readEEPROM(client);
   }
-  if (command == "read-map-point") {
-    readMapPoint(client);
+  if (command == "read-map-points") {
+    readMapPoints(client);
   }
 }
 
@@ -251,16 +261,20 @@ void readEEPROM(YunClient client){
 }
 
 //arduino/read-map-point
-//Přečte naposledy zaznamenanou pozici při stisku tlačítka ("NOT SET", pokud nebyla žádná pozice zatím zaznamenána)
-void readMapPoint(YunClient client) {
-  if(lastXPosition != 0 && lastYPosition != 0){
+//Přečte naposledy zaznamenané pozice při stisku tlačítka ("NOT SET", pokud nebyla žádná pozice zatím zaznamenána)
+void readMapPoints(YunClient client) {
+  if(indexOfLastPosition != -1){
     String s = "";
-    s.concat(lastXPosition);
-    s.concat(",");
-    s.concat(lastYPosition);
+    for (int i=0; i <= indexOfLastPosition; i++){
+        s.concat(lastXPositionBuffer[i]);
+        s.concat(",");
+        s.concat(lastYPositionBuffer[i]);
+        if(i != indexOfLastPosition){
+          s.concat(";");
+        }
+    }
     client.println(s);
-    lastXPosition = 0;
-    lastYPosition = 0;
+    indexOfLastPosition = -1;
   }else{
     client.println(F("NO_SET"));
   }
